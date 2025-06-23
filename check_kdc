@@ -1,0 +1,65 @@
+#!/bin/bash
+# nagios check script for kerberos authentication using a password
+# checks if a principal with given password can authenticate
+# successfully against a kerberos instance.
+
+usage () {
+  echo ""
+  echo "USAGE: "
+  echo "  $0 [-p] [-H] [-r] [-w] [-h]"
+  echo "    -p principal (including realm)"
+  echo "    -H host"
+  echo "    -r realm (in CAPS)"
+  echo "    -w password"
+  echo "    -h Show this help."
+  echo ""
+  exit 1
+}
+
+while getopts H:p:r:w:h opt; do
+    case $opt in
+        H) host=${OPTARG};;
+        p) principal=${OPTARG};;
+        r) realm=${OPTARG};;
+        w) password=${OPTARG};;
+        h) usage ;;
+        *) usage ;;
+    esac
+done
+
+maketemp () {
+    TMPDIR=${TMPDIR:-/tmp}
+    ( mktemp ) 2>/dev/null ||
+    ( mktemp "$TMPDIR/nagios.XXXXXX" ) 2>/dev/null ||
+    echo "$TMPDIR/nagios.$$"
+}
+
+conf=`maketemp`
+
+cat >"$conf" <<EOF
+[libdefaults]
+default_realm = $realm
+[realms]
+$realm = {
+    kdc = $host
+}
+[appdefaults]
+krb4_get_tickets = false
+EOF
+
+error=$(KRB5_CONFIG=$conf kinit $principal <<< $password 2>&1)
+exitcode=$?
+
+if [ $exitcode -eq 0 ]
+
+then
+
+    echo "OK: user $principal could be authenticated against $host"
+    exit 0
+
+else
+
+    echo "CRITICAL: $error"
+    exit 2
+
+fi
